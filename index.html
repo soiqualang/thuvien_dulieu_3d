@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trình xem mô hình 3D - Trống Đồng Đông Sơn</title>
+    <!-- Tải Tailwind CSS để giao diện đẹp hơn -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden; /* Ẩn thanh cuộn */
+        }
+        #info-box {
+            text-shadow: 0px 0px 5px rgba(0,0,0,0.7);
+        }
+        #loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #fff;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-800">
+
+    <!-- Phần tử canvas để render mô hình 3D -->
+    <div id="canvas-container" class="absolute top-0 left-0 w-full h-full"></div>
+
+    <!-- Lớp phủ hiển thị thông tin và trạng thái tải -->
+    <div id="overlay" class="absolute inset-0 text-white p-8 pointer-events-none">
+        <div id="info-box" class="absolute top-5 left-5 md:top-8 md:left-8">
+            <h1 class="text-2xl md:text-3xl font-bold">Mô hình 3D Trống Đồng Đông Sơn</h1>
+            <p class="text-sm md:text-base mt-2">Sử dụng chuột để tương tác:</p>
+            <ul class="list-disc list-inside text-sm mt-1">
+                <li><b>Giữ chuột trái + Kéo:</b> Xoay mô hình</li>
+                <li><b>Lăn chuột:</b> Phóng to / Thu nhỏ</li>
+                <li><b>Giữ chuột phải + Kéo:</b> Di chuyển mô hình</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Màn hình chờ khi tải mô hình -->
+    <div id="loading-screen" class="absolute inset-0 bg-gray-900 bg-opacity-80 flex flex-col items-center justify-center z-10">
+        <div id="loading-spinner"></div>
+        <p id="loading-text" class="mt-4 text-white text-lg">Đang tải mô hình...</p>
+    </div>
+
+    <!-- Tải thư viện Three.js -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.166.1/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        // Import các module cần thiết từ Three.js
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        // Thêm import cho DRACOLoader để giải nén mô hình
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+        // --- KHỞI TẠO CÁC THÀNH PHẦN CƠ BẢN ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+
+        // --- ĐIỀU KHIỂN (ORBIT CONTROLS) ---
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; // Tạo hiệu ứng mượt mà khi xoay
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.maxPolarAngle = Math.PI / 2; // Giới hạn góc xoay
+        controls.minDistance = 2; // Khoảng cách zoom gần nhất
+        controls.maxDistance = 15; // Khoảng cách zoom xa nhất
+
+        // --- ÁNH SÁNG ---
+        // Ánh sáng môi trường, chiếu sáng đều khắp mô hình
+        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+        scene.add(ambientLight);
+
+        // Ánh sáng có hướng, tạo bóng và chiều sâu
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 2);
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        // --- TẢI MÔ HÌNH GLTF ---
+        const loader = new GLTFLoader();
+        const loadingScreen = document.getElementById('loading-screen');
+        const loadingText = document.getElementById('loading-text');
+        
+        // --- CẤU HÌNH DRACO LOADER ---
+        // Khởi tạo DRACOLoader
+        const dracoLoader = new DRACOLoader();
+        // Chỉ định đường dẫn tới thư mục chứa bộ giải mã Draco
+        dracoLoader.setDecoderPath('https://www.gstatic.com/draco/v1/decoders/');
+        // Gán DRACOLoader cho GLTFLoader
+        loader.setDRACOLoader(dracoLoader);
+
+        // URL của mô hình 3D
+        const modelUrl = '3Dmodel-VietNam/trongdongdongson.gltf';
+
+        loader.load(modelUrl, 
+            // Hàm được gọi khi tải thành công
+            function (gltf) {
+                const model = gltf.scene;
+                
+                // Tính toán kích thước và vị trí trung tâm của mô hình
+                const box = new THREE.Box3().setFromObject(model);
+                const center = box.getCenter(new THREE.Vector3());
+                
+                // Dịch chuyển mô hình để nó nằm ở gốc tọa độ
+                model.position.sub(center); 
+                
+                scene.add(model);
+
+                // Ẩn màn hình chờ
+                loadingScreen.style.display = 'none';
+            },
+            // Hàm được gọi trong quá trình tải
+            function (xhr) {
+                if (xhr.total > 0) {
+                    const percentLoaded = (xhr.loaded / xhr.total * 100);
+                    loadingText.textContent = `Đang tải mô hình... ${Math.round(percentLoaded)}%`;
+                } else {
+                    // Đôi khi xhr.total là 0 khi file đã được cache hoặc đang trong giai đoạn giải nén
+                    loadingText.textContent = `Đang xử lý mô hình...`;
+                }
+            },
+            // Hàm được gọi khi có lỗi
+            function (error) {
+                console.error('Đã xảy ra lỗi khi tải mô hình:', error);
+                loadingText.textContent = 'Tải mô hình thất bại. Vui lòng kiểm tra lại đường link hoặc kết nối mạng.';
+                // Lưu ý: Lỗi có thể do CORS policy từ server chứa mô hình.
+            }
+        );
+        
+        // --- VỊ TRÍ CAMERA BAN ĐẦU ---
+        camera.position.z = 5;
+        camera.position.y = 2;
+
+        // --- VÒNG LẶP RENDER (ANIMATION LOOP) ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Cập nhật điều khiển
+            controls.update();
+
+            // Render lại scene
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // --- XỬ LÝ KHI THAY ĐỔI KÍCH THƯỚC CỬA SỔ ---
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+    </script>
+</body>
+</html>
+
